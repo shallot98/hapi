@@ -95,7 +95,7 @@ On first run, HAPI:
 ~/.hapi/
 ├── settings.json      # Main configuration
 ├── hapi.db           # SQLite database (server)
-├── daemon.state.json  # Daemon process state
+├── runner.state.json  # Runner process state
 └── logs/             # Log files
 ```
 </details>
@@ -201,18 +201,18 @@ hapi server
 
 Then message your bot with `/start`, open the app, and enter your `CLI_API_TOKEN`.
 
-### Daemon setup
+### Runner setup
 
 Run a background service for remote session spawning:
 
 ```bash
-hapi daemon start
-hapi daemon status
-hapi daemon logs
-hapi daemon stop
+hapi runner start
+hapi runner status
+hapi runner logs
+hapi runner stop
 ```
 
-With the daemon running:
+With the runner running:
 
 - Your machine appears in the "Machines" list
 - You can spawn sessions remotely from the web app
