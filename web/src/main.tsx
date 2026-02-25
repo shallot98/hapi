@@ -10,6 +10,7 @@ import { getTelegramWebApp, isTelegramEnvironment, loadTelegramSdk } from './hoo
 import { queryClient } from './lib/query-client'
 import { createAppRouter } from './router'
 import { I18nProvider } from './lib/i18n-context'
+import { isIOS162, maybeResetPwaStateForIOS162 } from './lib/ios'
 
 function getStartParam(): string | null {
     const query = new URLSearchParams(window.location.search)
@@ -35,32 +36,45 @@ function getInitialPath(): string {
 async function bootstrap() {
     initializeFontScale()
 
+    const ios162 = isIOS162()
+    if (ios162) {
+        // iOS 16.2: avoid stale PWA caches / stuck SW state.
+        const { reloaded } = await maybeResetPwaStateForIOS162({
+            appVersion: __APP_VERSION__
+        })
+        if (reloaded) {
+            return
+        }
+    }
+
     // Only load Telegram SDK in Telegram environment (with 3s timeout)
     const isTelegram = isTelegramEnvironment()
     if (isTelegram) {
         await loadTelegramSdk()
     }
 
-    const updateSW = registerSW({
-        onNeedRefresh() {
-            if (confirm('New version available! Reload to update?')) {
-                updateSW(true)
+    if (!ios162) {
+        const updateSW = registerSW({
+            onNeedRefresh() {
+                if (confirm('New version available! Reload to update?')) {
+                    updateSW(true)
+                }
+            },
+            onOfflineReady() {
+                console.log('App ready for offline use')
+            },
+            onRegistered(registration) {
+                if (registration) {
+                    setInterval(() => {
+                        registration.update()
+                    }, 60 * 60 * 1000)
+                }
+            },
+            onRegisterError(error) {
+                console.error('SW registration error:', error)
             }
-        },
-        onOfflineReady() {
-            console.log('App ready for offline use')
-        },
-        onRegistered(registration) {
-            if (registration) {
-                setInterval(() => {
-                    registration.update()
-                }, 60 * 60 * 1000)
-            }
-        },
-        onRegisterError(error) {
-            console.error('SW registration error:', error)
-        }
-    })
+        })
+    }
 
     const history = isTelegram
         ? createMemoryHistory({ initialEntries: [getInitialPath()] })
