@@ -71,6 +71,18 @@ export function SessionHeader(props: {
     const title = useMemo(() => getSessionTitle(session), [session])
     const worktreeBranch = session.metadata?.worktree?.branch
 
+    const modelDisplay = (() => {
+        const flavor = session.metadata?.flavor?.trim() ?? ''
+        if (flavor === 'claude') {
+            return { label: t('session.item.modelMode'), value: session.modelMode || 'default' }
+        }
+        const model = session.metadata?.model?.trim()
+        if (flavor === 'codex' || flavor === 'gemini' || model) {
+            return { label: t('session.item.model'), value: model || 'auto' }
+        }
+        return null
+    })()
+
     const [menuOpen, setMenuOpen] = useState(false)
     const [menuAnchorPoint, setMenuAnchorPoint] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
     const menuId = useId()
@@ -138,9 +150,11 @@ export function SessionHeader(props: {
                                 <span aria-hidden="true">❖</span>
                                 {session.metadata?.flavor?.trim() || 'unknown'}
                             </span>
-                            <span>
-                                {t('session.item.modelMode')}: {session.modelMode || 'default'}
-                            </span>
+                            {modelDisplay ? (
+                                <span>
+                                    {modelDisplay.label}: {modelDisplay.value}
+                                </span>
+                            ) : null}
                             {worktreeBranch ? (
                                 <span>{t('session.item.worktree')}: {worktreeBranch}</span>
                             ) : null}

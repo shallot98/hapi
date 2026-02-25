@@ -368,6 +368,11 @@ export class SessionCache {
             changed = true
         }
 
+        if (typeof oldObj.model === 'string' && typeof newObj.model !== 'string') {
+            merged.model = oldObj.model
+            changed = true
+        }
+
         if (oldObj.worktree && !newObj.worktree) {
             merged.worktree = oldObj.worktree
             changed = true

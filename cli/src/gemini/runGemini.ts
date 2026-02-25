@@ -35,11 +35,14 @@ export async function runGemini(opts: {
         controlledByUser: false
     };
 
+    const resolvedModel = resolveGeminiRuntimeConfig({ model: opts.model }).model;
+
     const { api, session } = await bootstrapSession({
         flavor: 'gemini',
         startedBy,
         workingDirectory,
-        agentState: initialState
+        agentState: initialState,
+        model: resolvedModel
     });
 
     const startingMode: 'local' | 'remote' = opts.startingMode
@@ -54,7 +57,6 @@ export async function runGemini(opts: {
 
     const sessionWrapperRef: { current: GeminiSession | null } = { current: null };
     let currentPermissionMode: PermissionMode = opts.permissionMode ?? 'default';
-    const resolvedModel = resolveGeminiRuntimeConfig({ model: opts.model }).model;
 
     const hookServer = await startHookServer({
         onSessionHook: (sessionId, data) => {

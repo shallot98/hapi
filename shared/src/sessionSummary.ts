@@ -7,6 +7,7 @@ export type SessionSummaryMetadata = {
     machineId?: string
     summary?: { text: string }
     flavor?: string | null
+    model?: string
     worktree?: WorktreeMetadata
 }
 
@@ -31,6 +32,7 @@ export function toSessionSummary(session: Session): SessionSummary {
         machineId: session.metadata.machineId ?? undefined,
         summary: session.metadata.summary ? { text: session.metadata.summary.text } : undefined,
         flavor: session.metadata.flavor ?? null,
+        model: session.metadata.model,
         worktree: session.metadata.worktree
     } : null
 

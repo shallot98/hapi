@@ -171,6 +171,19 @@ function SessionItem(props: {
     const { t } = useTranslation()
     const { session: s, onSelect, showPath = true, api, selected = false } = props
     const { haptic } = usePlatform()
+
+    const modelDisplay = (() => {
+        const flavor = s.metadata?.flavor?.trim() ?? ''
+        if (flavor === 'claude') {
+            return { label: t('session.item.modelMode'), value: s.modelMode || 'default' }
+        }
+        const model = s.metadata?.model?.trim()
+        if (flavor === 'codex' || flavor === 'gemini' || model) {
+            return { label: t('session.item.model'), value: model || 'auto' }
+        }
+        return null
+    })()
+
     const [menuOpen, setMenuOpen] = useState(false)
     const [menuAnchorPoint, setMenuAnchorPoint] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
     const [renameOpen, setRenameOpen] = useState(false)
@@ -259,7 +272,9 @@ function SessionItem(props: {
                         </span>
                         {getAgentLabel(s)}
                     </span>
-                    <span>{t('session.item.modelMode')}: {s.modelMode || 'default'}</span>
+                    {modelDisplay ? (
+                        <span>{modelDisplay.label}: {modelDisplay.value}</span>
+                    ) : null}
                     {s.metadata?.worktree?.branch ? (
                         <span>{t('session.item.worktree')}: {s.metadata.worktree.branch}</span>
                     ) : null}
