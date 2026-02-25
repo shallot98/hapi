@@ -4,6 +4,7 @@ import type { HighlighterCore } from 'shiki/core'
 import { useState, useEffect, useMemo, type ReactNode } from 'react'
 import { toJsxRuntime } from 'hast-util-to-jsx-runtime'
 import { jsx, jsxs, Fragment } from 'react/jsx-runtime'
+import { isIOS162 } from '@/lib/ios'
 
 // Only 2 themes
 const THEMES = [
@@ -89,15 +90,54 @@ export const langAlias: Record<string, string> = {
 }
 
 // Singleton highlighter instance
-let highlighterPromise: Promise<HighlighterCore> | null = null
+let highlighterPromise: Promise<HighlighterCore | null> | null = null
 
-function getHighlighter(): Promise<HighlighterCore> {
+type RegexEngine = {
+    createScanner: (patterns: Array<string | RegExp>) => unknown
+    createString: (s: string) => unknown
+}
+
+function supportsRegexLookbehind(): boolean {
+    try {
+        // iOS 16.2 Safari: throws "invalid group specifier name" for lookbehind.
+        // Feature-detect instead of relying only on user-agent sniffing.
+        new RegExp('(?<=a)b')
+        return true
+    } catch {
+        return false
+    }
+}
+
+async function resolveShikiEngine(): Promise<RegexEngine | null> {
+    if (supportsRegexLookbehind() && !isIOS162()) {
+        return createJavaScriptRegexEngine({ forgiving: true })
+    }
+
+    try {
+        const [{ createOnigurumaEngine }, wasmModule] = await Promise.all([
+            import('shiki/engine/oniguruma'),
+            import('shiki/wasm'),
+        ])
+        return await createOnigurumaEngine(wasmModule)
+    } catch (error) {
+        console.warn('[shiki] Failed to init oniguruma engine; disabling syntax highlighting', error)
+        return null
+    }
+}
+
+function getHighlighter(): Promise<HighlighterCore | null> {
     if (!highlighterPromise) {
-        highlighterPromise = createHighlighterCore({
-            themes: THEMES,
-            langs: LANGS,
-            engine: createJavaScriptRegexEngine({ forgiving: true }),
-        })
+        highlighterPromise = (async () => {
+            const engine = await resolveShikiEngine()
+            if (!engine) {
+                return null
+            }
+            return await createHighlighterCore({
+                themes: THEMES,
+                langs: LANGS,
+                engine: engine as any,
+            })
+        })()
     }
     return highlighterPromise
 }
@@ -126,6 +166,10 @@ export function useShikiHighlighter(
         async function highlight() {
             const highlighter = await getHighlighter()
             if (cancelled) return
+            if (!highlighter) {
+                setHighlighted(null)
+                return
+            }
 
             const loadedLangs = highlighter.getLoadedLanguages()
 
