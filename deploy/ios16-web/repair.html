@@ -1,0 +1,132 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>HAPI Repair</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      max-width: 640px;
+      margin: 24px auto;
+      padding: 0 16px;
+      line-height: 1.45;
+    }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    p { margin: 0 0 12px; }
+    label { display: block; margin: 12px 0 6px; font-weight: 600; }
+    input {
+      box-sizing: border-box;
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #999;
+      border-radius: 8px;
+      font-size: 14px;
+    }
+    button {
+      margin-top: 16px;
+      padding: 10px 14px;
+      border: 0;
+      border-radius: 8px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #0b62ff;
+      color: #fff;
+    }
+    .muted {
+      color: #666;
+      font-size: 13px;
+      margin-top: 8px;
+    }
+    .ok { color: #0a7d21; margin-top: 10px; }
+    .err { color: #b00020; margin-top: 10px; }
+    code { word-break: break-all; }
+  </style>
+</head>
+<body>
+  <h1>HAPI iOS Repair</h1>
+  <p>Use this page to clear stale auth cache and re-bind a fresh token.</p>
+
+  <label for="hub">Hub URL</label>
+  <input id="hub" type="url" placeholder="http://23.82.96.72:3007" />
+
+  <label for="token">Access Token</label>
+  <input id="token" type="text" placeholder="Paste token here" />
+
+  <button id="apply">Apply and open HAPI</button>
+  <p class="muted">This writes <code>hapi_hub_url</code> and <code>hapi_access_token::*</code> in localStorage, then opens <code>/</code>.</p>
+  <div id="msg"></div>
+
+  <script>
+    (function () {
+      var hubEl = document.getElementById("hub");
+      var tokenEl = document.getElementById("token");
+      var msgEl = document.getElementById("msg");
+      var applyBtn = document.getElementById("apply");
+
+      var params = new URLSearchParams(window.location.search);
+      var hubParam = params.get("hub");
+      var tokenParam = params.get("token");
+
+      function setMsg(text, cls) {
+        msgEl.className = cls;
+        msgEl.textContent = text;
+      }
+
+      function normalizeOrigin(raw) {
+        if (!raw) return "";
+        try {
+          return new URL(raw.trim()).origin;
+        } catch (_) {
+          return "";
+        }
+      }
+
+      hubEl.value = normalizeOrigin(hubParam) || localStorage.getItem("hapi_hub_url") || (window.location.origin);
+      if (tokenParam) tokenEl.value = tokenParam;
+
+      applyBtn.addEventListener("click", function () {
+        var hub = normalizeOrigin(hubEl.value);
+        var token = (tokenEl.value || "").trim();
+
+        if (!hub) {
+          setMsg("Invalid hub URL.", "err");
+          return;
+        }
+        if (!token) {
+          setMsg("Token is empty.", "err");
+          return;
+        }
+
+        try {
+          localStorage.setItem("hapi_hub_url", hub);
+
+          var remove = [];
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf("hapi_access_token::") === 0) {
+              remove.push(k);
+            }
+          }
+          for (var j = 0; j < remove.length; j++) {
+            localStorage.removeItem(remove[j]);
+          }
+
+          localStorage.setItem("hapi_access_token::" + hub, token);
+          localStorage.setItem("hapi_access_token::" + window.location.origin, token);
+
+          setMsg("Saved. Redirecting...", "ok");
+          setTimeout(function () {
+            window.location.href = "/?hub=" + encodeURIComponent(hub);
+          }, 350);
+        } catch (err) {
+          setMsg("Failed to write localStorage: " + String(err), "err");
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
