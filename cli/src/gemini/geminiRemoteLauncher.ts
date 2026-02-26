@@ -11,6 +11,63 @@ import { createGeminiBackend } from './utils/geminiBackend';
 import { GeminiPermissionHandler } from './utils/permissionHandler';
 import { resolveGeminiRuntimeConfig } from './utils/config';
 
+function toLoggableError(error: unknown): { name?: string; message: string; stack?: string; cause?: unknown } {
+    if (error instanceof Error) {
+        return {
+            name: error.name,
+            message: error.message,
+            stack: error.stack,
+            cause: error.cause
+        };
+    }
+
+    if (typeof error === 'string') {
+        return { message: error };
+    }
+
+    try {
+        return { message: JSON.stringify(error) };
+    } catch {
+        return { message: String(error) };
+    }
+}
+
+function formatPromptFailureMessage(opts: { model?: string; message: string }): string {
+    const model = opts.model ? ` (${opts.model})` : '';
+    const messageLower = opts.message.toLowerCase();
+
+    if (
+        messageLower.includes('no capacity available') ||
+        messageLower.includes('model_capacity_exhausted')
+    ) {
+        return `Gemini${model} has no server capacity right now. Try switching to gemini-2.5-pro or gemini-2.5-flash, or retry later.`;
+    }
+
+    if (
+        messageLower.includes('status 429') ||
+        messageLower.includes('ratelimit') ||
+        messageLower.includes('rate limit')
+    ) {
+        return `Gemini${model} is rate limited. Please wait and try again, or switch models.`;
+    }
+
+    if (
+        messageLower.includes('status 401') ||
+        messageLower.includes('status 403') ||
+        messageLower.includes('unauthenticated') ||
+        messageLower.includes('permission denied') ||
+        messageLower.includes('authentication')
+    ) {
+        return `Gemini${model} authentication failed. Try running "gemini auth login" and retry.`;
+    }
+
+    if (opts.message.trim().length > 0) {
+        return `Gemini${model} prompt failed: ${opts.message}`;
+    }
+
+    return `Gemini${model} prompt failed. Check logs for details.`;
+}
+
 class GeminiRemoteLauncher extends RemoteLauncherBase {
     private readonly session: GeminiSession;
     private readonly model?: string;
@@ -114,12 +171,14 @@ class GeminiRemoteLauncher extends RemoteLauncherBase {
                     this.handleAgentMessage(message);
                 });
             } catch (error) {
-                logger.warn('[gemini-remote] prompt failed', error);
+                const err = toLoggableError(error);
+                logger.warn('[gemini-remote] prompt failed', err);
+                const message = formatPromptFailureMessage({ model: this.displayModel ?? undefined, message: err.message });
                 session.sendSessionEvent({
                     type: 'message',
-                    message: 'Gemini prompt failed. Check logs for details.'
+                    message
                 });
-                messageBuffer.addMessage('Gemini prompt failed', 'status');
+                messageBuffer.addMessage(message, 'status');
             } finally {
                 session.onThinkingChange(false);
                 await this.permissionHandler?.cancelAll('Prompt finished');

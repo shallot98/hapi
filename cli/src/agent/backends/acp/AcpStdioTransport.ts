@@ -289,6 +289,18 @@ export class AcpStdioTransport {
 
         const lowerText = text.toLowerCase();
 
+        // Model capacity exhausted (429)
+        if (lowerText.includes('no capacity available') || lowerText.includes('model_capacity_exhausted')) {
+            const modelMatch = text.match(/model\s+([a-z0-9_.-]+)/i);
+            const model = modelMatch?.[1];
+            this.stderrErrorHandler({
+                type: 'rate_limit',
+                message: `No capacity available for model${model ? ` ${model}` : ''}. Try gemini-2.5-pro/gemini-2.5-flash or retry later.`,
+                raw: text
+            });
+            return;
+        }
+
         // Rate limit errors (429)
         if (lowerText.includes('status 429') || lowerText.includes('ratelimitexceeded') || lowerText.includes('rate limit')) {
             this.stderrErrorHandler({
