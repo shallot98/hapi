@@ -331,16 +331,24 @@ export class AcpSdkBackend implements AgentBackend {
             options
         };
 
-        if (this.permissionHandler) {
-            this.permissionHandler(request);
-        } else {
+        if (!this.permissionHandler) {
             logger.debug('[ACP] No permission handler registered; cancelling request');
             return { outcome: { outcome: 'cancelled' } };
         }
 
-        return await new Promise((resolve) => {
+        const pendingOutcome = new Promise((resolve) => {
             this.pendingPermissions.set(toolCallId, { resolve });
         });
+
+        try {
+            this.permissionHandler(request);
+        } catch (error) {
+            this.pendingPermissions.delete(toolCallId);
+            logger.debug('[ACP] Permission handler threw; cancelling request', error);
+            return { outcome: { outcome: 'cancelled' } };
+        }
+
+        return await pendingOutcome;
     }
 
     private notifyResponseComplete(): void {

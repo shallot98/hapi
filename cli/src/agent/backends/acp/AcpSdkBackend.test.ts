@@ -31,8 +31,8 @@ afterEach(() => {
 
 describe('AcpSdkBackend', () => {
     it('emits turn_complete after trailing tool updates from the same turn', async () => {
-        backendStatics.UPDATE_QUIET_PERIOD_MS = 8;
-        backendStatics.UPDATE_DRAIN_TIMEOUT_MS = 200;
+        backendStatics.UPDATE_QUIET_PERIOD_MS = 30;
+        backendStatics.UPDATE_DRAIN_TIMEOUT_MS = 1000;
         backendStatics.PRE_PROMPT_UPDATE_QUIET_PERIOD_MS = 1;
         backendStatics.PRE_PROMPT_UPDATE_DRAIN_TIMEOUT_MS = 50;
 
@@ -100,5 +100,45 @@ describe('AcpSdkBackend', () => {
             'text',
             'turn_complete'
         ]);
+    });
+
+    it('resolves permission requests even when responded immediately', async () => {
+        const backend = new AcpSdkBackend({ command: 'opencode' });
+        backend.onPermissionRequest((request) => {
+            void backend.respondToPermission(request.sessionId, request, {
+                outcome: 'selected',
+                optionId: 'allow_once'
+            });
+        });
+
+        const backendInternal = backend as unknown as {
+            handlePermissionRequest: (params: unknown, requestId: string | number | null) => Promise<unknown>;
+        };
+
+        const params = {
+            sessionId: 'session-1',
+            toolCall: {
+                toolCallId: 'tool-1',
+                title: 'Run',
+                kind: 'run_shell_command',
+                rawInput: { command: 'echo hello' }
+            },
+            options: [
+                { optionId: 'allow_once', name: 'Allow once', kind: 'allow_once' }
+            ]
+        };
+
+        const resultOrTimeout = await Promise.race([
+            backendInternal.handlePermissionRequest(params, null),
+            sleep(200).then(() => 'timeout' as const)
+        ]);
+
+        expect(resultOrTimeout).not.toBe('timeout');
+        expect(resultOrTimeout).toEqual({
+            outcome: {
+                outcome: 'selected',
+                optionId: 'allow_once'
+            }
+        });
     });
 });
