@@ -21,103 +21,154 @@ type PushPayload = {
     }
 }
 
-precacheAndRoute(self.__WB_MANIFEST)
+function isIOS162UserAgent(userAgent: string): boolean {
+    const source = String(userAgent || '')
+    const isAppleWebKit = /AppleWebKit/i.test(source)
+    const isMobileApple = /(Mobile|iP(hone|ad|od))/i.test(source)
+    const byOsToken = /OS 16_2(?:_|\b)/i.test(source)
+    const byVersionToken = /Version\/16\.2/i.test(source) && isAppleWebKit && isMobileApple
+    return byOsToken || byVersionToken
+}
 
-registerRoute(
-    ({ url }) => url.pathname === '/api/sessions',
-    new NetworkFirst({
-        cacheName: 'api-sessions',
-        networkTimeoutSeconds: 10,
-        plugins: [
-            new ExpirationPlugin({
-                maxEntries: 10,
-                maxAgeSeconds: 60 * 5
-            })
-        ]
+const ios162 = isIOS162UserAgent(self.navigator?.userAgent || '')
+
+if (ios162) {
+    // iOS 16.2: avoid stale PWA caches by immediately clearing caches and
+    // unregistering the service worker.
+    self.addEventListener('install', () => {
+        self.skipWaiting()
     })
-)
 
-registerRoute(
-    ({ url }) => /^\/api\/sessions\/[^/]+$/.test(url.pathname),
-    new NetworkFirst({
-        cacheName: 'api-session-detail',
-        networkTimeoutSeconds: 10,
-        plugins: [
-            new ExpirationPlugin({
-                maxEntries: 20,
-                maxAgeSeconds: 60 * 5
-            })
-        ]
+    self.addEventListener('activate', (event) => {
+        event.waitUntil(
+            (async () => {
+                try {
+                    const keys = await caches.keys()
+                    await Promise.all(keys.map((key) => caches.delete(key)))
+                } catch {
+                    // ignore
+                }
+
+                try {
+                    await self.registration.unregister()
+                } catch {
+                    // ignore
+                }
+
+                try {
+                    const clientsList = await self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+                    for (const client of clientsList) {
+                        client.navigate(client.url)
+                    }
+                } catch {
+                    // ignore
+                }
+            })()
+        )
     })
-)
 
-registerRoute(
-    ({ url }) => url.pathname === '/api/machines',
-    new NetworkFirst({
-        cacheName: 'api-machines',
-        networkTimeoutSeconds: 10,
-        plugins: [
-            new ExpirationPlugin({
-                maxEntries: 5,
-                maxAgeSeconds: 60 * 10
-            })
-        ]
+    self.addEventListener('fetch', () => {
+        // Intentionally empty.
     })
-)
+} else {
+    precacheAndRoute(self.__WB_MANIFEST)
 
-registerRoute(
-    /^https:\/\/cdn\.socket\.io\/.*/,
-    new CacheFirst({
-        cacheName: 'cdn-socketio',
-        plugins: [
-            new ExpirationPlugin({
-                maxEntries: 5,
-                maxAgeSeconds: 60 * 60 * 24 * 30
-            })
-        ]
-    })
-)
-
-registerRoute(
-    /^https:\/\/telegram\.org\/.*/,
-    new CacheFirst({
-        cacheName: 'cdn-telegram',
-        plugins: [
-            new ExpirationPlugin({
-                maxEntries: 5,
-                maxAgeSeconds: 60 * 60 * 24 * 7
-            })
-        ]
-    })
-)
-
-self.addEventListener('push', (event) => {
-    const payload = event.data?.json() as PushPayload | undefined
-    if (!payload) {
-        return
-    }
-
-    const title = payload.title || 'HAPI'
-    const body = payload.body ?? ''
-    const icon = payload.icon ?? '/pwa-192x192.png'
-    const badge = payload.badge ?? '/pwa-64x64.png'
-    const data = payload.data
-    const tag = payload.tag
-
-    event.waitUntil(
-        self.registration.showNotification(title, {
-            body,
-            icon,
-            badge,
-            data,
-            tag
+    registerRoute(
+        ({ url }) => url.pathname === '/api/sessions',
+        new NetworkFirst({
+            cacheName: 'api-sessions',
+            networkTimeoutSeconds: 10,
+            plugins: [
+                new ExpirationPlugin({
+                    maxEntries: 10,
+                    maxAgeSeconds: 60 * 5
+                })
+            ]
         })
     )
-})
 
-self.addEventListener('notificationclick', (event) => {
-    event.notification.close()
-    const data = event.notification.data as { url?: string } | undefined
-    const url = data?.url ?? '/'
-    event.waitUntil(self.clients.openWindow(url))
-})
+    registerRoute(
+        ({ url }) => /^\/api\/sessions\/[^/]+$/.test(url.pathname),
+        new NetworkFirst({
+            cacheName: 'api-session-detail',
+            networkTimeoutSeconds: 10,
+            plugins: [
+                new ExpirationPlugin({
+                    maxEntries: 20,
+                    maxAgeSeconds: 60 * 5
+                })
+            ]
+        })
+    )
+
+    registerRoute(
+        ({ url }) => url.pathname === '/api/machines',
+        new NetworkFirst({
+            cacheName: 'api-machines',
+            networkTimeoutSeconds: 10,
+            plugins: [
+                new ExpirationPlugin({
+                    maxEntries: 5,
+                    maxAgeSeconds: 60 * 10
+                })
+            ]
+        })
+    )
+
+    registerRoute(
+        /^https:\/\/cdn\.socket\.io\/.*/,
+        new CacheFirst({
+            cacheName: 'cdn-socketio',
+            plugins: [
+                new ExpirationPlugin({
+                    maxEntries: 5,
+                    maxAgeSeconds: 60 * 60 * 24 * 30
+                })
+            ]
+        })
+    )
+
+    registerRoute(
+        /^https:\/\/telegram\.org\/.*/,
+        new CacheFirst({
+            cacheName: 'cdn-telegram',
+            plugins: [
+                new ExpirationPlugin({
+                    maxEntries: 5,
+                    maxAgeSeconds: 60 * 60 * 24 * 7
+                })
+            ]
+        })
+    )
+
+    self.addEventListener('push', (event) => {
+        const payload = event.data?.json() as PushPayload | undefined
+        if (!payload) {
+            return
+        }
+
+        const title = payload.title || 'HAPI'
+        const body = payload.body ?? ''
+        const icon = payload.icon ?? '/pwa-192x192.png'
+        const badge = payload.badge ?? '/pwa-64x64.png'
+        const data = payload.data
+        const tag = payload.tag
+
+        event.waitUntil(
+            self.registration.showNotification(title, {
+                body,
+                icon,
+                badge,
+                data,
+                tag
+            })
+        )
+    })
+
+    self.addEventListener('notificationclick', (event) => {
+        event.notification.close()
+        const data = event.notification.data as { url?: string } | undefined
+        const url = data?.url ?? '/'
+        event.waitUntil(self.clients.openWindow(url))
+    })
+}

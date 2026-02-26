@@ -28,6 +28,26 @@ import { loadEmbeddedAssetMap, type EmbeddedWebAsset } from './embeddedAssets'
 import { isBunCompiled } from '../utils/bunCompiled'
 import type { Store } from '../store'
 
+const CACHE_CONTROL_NO_STORE = 'no-store, no-cache, must-revalidate'
+const CACHE_CONTROL_ASSET_IMMUTABLE = 'public, max-age=31536000, immutable'
+const CACHE_CONTROL_STATIC = 'public, max-age=3600'
+
+function cacheControlForWebPath(pathname: string): string {
+    if (pathname.startsWith('/assets/')) {
+        return CACHE_CONTROL_ASSET_IMMUTABLE
+    }
+
+    if (pathname === '/sw.js' || pathname.endsWith('.webmanifest')) {
+        return CACHE_CONTROL_NO_STORE
+    }
+
+    if (pathname === '/' || pathname.endsWith('.html') || !pathname.includes('.')) {
+        return CACHE_CONTROL_NO_STORE
+    }
+
+    return CACHE_CONTROL_STATIC
+}
+
 function findWebappDistDir(): { distDir: string; indexHtmlPath: string } {
     const candidates = [
         join(process.cwd(), '..', 'web', 'dist'),
@@ -49,7 +69,8 @@ function findWebappDistDir(): { distDir: string; indexHtmlPath: string } {
 function serveEmbeddedAsset(asset: EmbeddedWebAsset): Response {
     return new Response(Bun.file(asset.sourcePath), {
         headers: {
-            'Content-Type': asset.mimeType
+            'Content-Type': asset.mimeType,
+            'Cache-Control': cacheControlForWebPath(asset.path)
         }
     })
 }
@@ -178,24 +199,44 @@ from GitHub Pages instead of through the relay tunnel.
         return app
     }
 
-    app.use('/assets/*', serveStatic({ root: distDir }))
+    const serveDistStatic = serveStatic({ root: distDir })
+    const serveDistIndex = serveStatic({ root: distDir, path: 'index.html' })
+
+    app.use('/assets/*', async (c, next) => {
+        const response = await serveDistStatic(c, next)
+        response?.headers.set('Cache-Control', CACHE_CONTROL_ASSET_IMMUTABLE)
+        return response
+    })
 
     app.use('*', async (c, next) => {
-        if (c.req.path.startsWith('/api')) {
+        if (c.req.path.startsWith('/api') || c.req.path.startsWith('/cli')) {
             await next()
             return
         }
 
-        return await serveStatic({ root: distDir })(c, next)
+        if (c.req.method !== 'GET' && c.req.method !== 'HEAD') {
+            return await next()
+        }
+
+        const pathname = c.req.path
+        if (!pathname.includes('.')) {
+            return await next()
+        }
+
+        const response = await serveDistStatic(c, next)
+        response?.headers.set('Cache-Control', cacheControlForWebPath(pathname))
+        return response
     })
 
     app.get('*', async (c, next) => {
-        if (c.req.path.startsWith('/api')) {
+        if (c.req.path.startsWith('/api') || c.req.path.startsWith('/cli')) {
             await next()
             return
         }
 
-        return await serveStatic({ root: distDir, path: 'index.html' })(c, next)
+        const response = await serveDistIndex(c, next)
+        response?.headers.set('Cache-Control', CACHE_CONTROL_NO_STORE)
+        return response
     })
 
     return app
