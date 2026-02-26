@@ -8,6 +8,7 @@ import { SessionActionMenu } from '@/components/SessionActionMenu'
 import { RenameSessionDialog } from '@/components/RenameSessionDialog'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from '@/lib/use-translation'
+import { getSessionModelOverride } from '@/lib/sessionModelOverrides'
 
 type SessionGroup = {
     directory: string
@@ -178,6 +179,7 @@ function SessionItem(props: {
             return { label: t('session.item.modelMode'), value: s.modelMode || 'default' }
         }
         const model = s.metadata?.model?.trim()
+            || ((flavor === 'codex' || flavor === 'gemini') ? getSessionModelOverride(s.id)?.model : undefined)
         if (flavor === 'codex' || flavor === 'gemini' || model) {
             return { label: t('session.item.model'), value: model || 'auto' }
         }

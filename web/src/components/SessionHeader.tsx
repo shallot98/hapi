@@ -7,6 +7,7 @@ import { SessionActionMenu } from '@/components/SessionActionMenu'
 import { RenameSessionDialog } from '@/components/RenameSessionDialog'
 import { ConfirmDialog } from '@/components/ui/ConfirmDialog'
 import { useTranslation } from '@/lib/use-translation'
+import { getSessionModelOverride } from '@/lib/sessionModelOverrides'
 
 function getSessionTitle(session: Session): string {
     if (session.metadata?.name) {
@@ -77,6 +78,7 @@ export function SessionHeader(props: {
             return { label: t('session.item.modelMode'), value: session.modelMode || 'default' }
         }
         const model = session.metadata?.model?.trim()
+            || ((flavor === 'codex' || flavor === 'gemini') ? getSessionModelOverride(session.id)?.model : undefined)
         if (flavor === 'codex' || flavor === 'gemini' || model) {
             return { label: t('session.item.model'), value: model || 'auto' }
         }

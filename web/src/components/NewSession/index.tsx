@@ -13,6 +13,7 @@ import { AgentSelector } from './AgentSelector'
 import { DirectorySection } from './DirectorySection'
 import { MachineSelector } from './MachineSelector'
 import { ModelSelector } from './ModelSelector'
+import { recordSessionModelOverride } from '@/lib/sessionModelOverrides'
 import {
     loadPreferredAgent,
     loadPreferredYoloMode,
@@ -224,6 +225,7 @@ export function NewSession(props: {
                 haptic.notification('success')
                 setLastUsedMachineId(machineId)
                 addRecentPath(machineId, directory.trim())
+                recordSessionModelOverride(result.sessionId, { agent, model })
                 props.onSuccess(result.sessionId)
                 return
             }

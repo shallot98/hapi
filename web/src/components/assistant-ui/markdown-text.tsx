@@ -1,17 +1,63 @@
+import { useEffect, useState } from 'react'
 import type { ComponentPropsWithoutRef } from 'react'
 import {
     MarkdownTextPrimitive,
     unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
     useIsMarkdownCodeBlock,
     type CodeHeaderProps,
+    type MarkdownTextPrimitiveProps,
 } from '@assistant-ui/react-markdown'
-import remarkGfm from 'remark-gfm'
 import { cn } from '@/lib/utils'
 import { SyntaxHighlighter } from '@/components/assistant-ui/shiki-highlighter'
 import { useCopyToClipboard } from '@/hooks/useCopyToClipboard'
 import { CopyIcon, CheckIcon } from '@/components/icons'
+import { isIOS162 } from '@/lib/ios'
+import remarkGfmCompat from '@/lib/remarkGfmCompat'
 
-export const MARKDOWN_PLUGINS = [remarkGfm]
+type RemarkPlugins = NonNullable<MarkdownTextPrimitiveProps['remarkPlugins']>
+type RemarkPlugin = RemarkPlugins[number]
+
+function supportsRegexLookbehind(): boolean {
+    // iOS 16.2 Safari throws on lookbehind; treat as unsupported without probing.
+    if (isIOS162()) return false
+    try {
+        // Safari < 16.4 throws: "Invalid regular expression: invalid group specifier name"
+        // eslint-disable-next-line no-new
+        new RegExp('(?<=a)b')
+        return true
+    } catch {
+        return false
+    }
+}
+
+export function useMarkdownPlugins(): RemarkPlugin[] {
+    const [plugins, setPlugins] = useState<RemarkPlugins>(
+        () => (supportsRegexLookbehind() ? [] : [remarkGfmCompat as unknown as RemarkPlugin])
+    )
+
+    useEffect(() => {
+        if (!supportsRegexLookbehind()) return
+
+        let cancelled = false
+
+        void import('remark-gfm')
+            .then((mod) => {
+                if (cancelled) return
+                const plugin = (mod as { default?: RemarkPlugin }).default
+                setPlugins(plugin ? [plugin] : [])
+            })
+            .catch(() => {
+                if (cancelled) return
+                setPlugins([remarkGfmCompat as unknown as RemarkPlugin])
+            })
+
+        return () => {
+            cancelled = true
+        }
+    }, [])
+
+    return plugins
+}
 
 function CodeHeader(props: CodeHeaderProps) {
     const { copied, copy } = useCopyToClipboard()
@@ -221,9 +267,10 @@ export const defaultComponents = memoizeMarkdownComponents({
 } as const)
 
 export function MarkdownText() {
+    const remarkPlugins = useMarkdownPlugins()
     return (
         <MarkdownTextPrimitive
-            remarkPlugins={MARKDOWN_PLUGINS}
+            remarkPlugins={remarkPlugins}
             components={defaultComponents}
             className={cn('aui-md min-w-0 max-w-full break-words text-base')}
         />

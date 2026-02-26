@@ -1,7 +1,8 @@
+import { useMemo } from 'react'
 import type { MarkdownTextPrimitiveProps } from '@assistant-ui/react-markdown'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
 import { TextMessagePartProvider } from '@assistant-ui/react'
-import { MARKDOWN_PLUGINS, defaultComponents } from '@/components/assistant-ui/markdown-text'
+import { defaultComponents, useMarkdownPlugins } from '@/components/assistant-ui/markdown-text'
 import { cn } from '@/lib/utils'
 
 interface MarkdownRendererProps {
@@ -10,15 +11,18 @@ interface MarkdownRendererProps {
 }
 
 function MarkdownContent(props: MarkdownRendererProps) {
+    const remarkPlugins = useMarkdownPlugins()
     const mergedComponents = props.components
         ? { ...defaultComponents, ...props.components }
         : defaultComponents
 
+    const memoizedComponents = useMemo(() => mergedComponents, [mergedComponents])
+
     return (
         <TextMessagePartProvider text={props.content}>
             <MarkdownTextPrimitive
-                remarkPlugins={MARKDOWN_PLUGINS}
-                components={mergedComponents}
+                remarkPlugins={remarkPlugins}
+                components={memoizedComponents}
                 className={cn('aui-md min-w-0 max-w-full break-words text-base')}
             />
         </TextMessagePartProvider>

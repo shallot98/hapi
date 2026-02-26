@@ -2,7 +2,7 @@ import { useState, useEffect, type FC, type PropsWithChildren } from 'react'
 import { useMessage } from '@assistant-ui/react'
 import { MarkdownTextPrimitive } from '@assistant-ui/react-markdown'
 import { cn } from '@/lib/utils'
-import { defaultComponents, MARKDOWN_PLUGINS } from '@/components/assistant-ui/markdown-text'
+import { defaultComponents, useMarkdownPlugins } from '@/components/assistant-ui/markdown-text'
 
 function ChevronIcon(props: { className?: string; open?: boolean }) {
     return (
@@ -37,9 +37,10 @@ function ShimmerDot() {
  * Renders individual reasoning message part content with markdown support.
  */
 export const Reasoning: FC = () => {
+    const remarkPlugins = useMarkdownPlugins()
     return (
         <MarkdownTextPrimitive
-            remarkPlugins={MARKDOWN_PLUGINS}
+            remarkPlugins={remarkPlugins}
             components={defaultComponents}
             className={cn('aui-reasoning-content min-w-0 max-w-full break-words text-sm text-[var(--app-hint)]')}
         />
