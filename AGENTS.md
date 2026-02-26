@@ -119,6 +119,7 @@ bun run build:single-exe # All-in-one binary
 ## iOS 16.2 compatibility (Web/PWA)
 
 - Safari iOS 16.2: RegExp lookbehind unsupported. Avoid adding patterns like `/(?<=...)/` / `/(?<!...)/`.
+- `remark-gfm` pulls `mdast-util-gfm-autolink-literal`, which uses lookbehind in its autolink/email transform. On iOS 16.2, do **not** load `remark-gfm`; use the compat plugin (`web/src/lib/remarkGfmCompat.ts`) or disable GFM.
 - Shiki/TextMate grammars include lookbehind. On iOS 16.2, do **not** use Shiki's JavaScript regex engine; use Oniguruma (WASM) engine or disable syntax highlighting.
 - PWA cache/SW: iOS 16.2 may get stuck on stale caches. Prefer easy recovery path (clear caches, disable SW if needed).
 - Static hotfix bundle: see `deploy/ios16-web/` (includes `gateway.js` + `sw.js` cache kill-switch).
