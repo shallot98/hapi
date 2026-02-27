@@ -352,6 +352,17 @@ export function query(config: {
         shell: false
     }) as ChildProcessWithoutNullStreams
 
+    // Capture stderr tail for better error messages (works even without DEBUG)
+    const maxStderrTailChars = 2000
+    let stderrTail = ''
+    child.stderr.on('data', (data) => {
+        const text = data.toString()
+        stderrTail = (stderrTail + text).slice(-maxStderrTailChars)
+        if (process.env.DEBUG) {
+            console.error('Claude Code stderr:', text)
+        }
+    })
+
     // Handle stdin
     let childStdin: Writable | null = null
     if (typeof prompt === 'string') {
@@ -359,13 +370,6 @@ export function query(config: {
     } else {
         streamToStdin(prompt, child.stdin, config.options?.abort)
         childStdin = child.stdin
-    }
-
-    // Handle stderr in debug mode
-    if (process.env.DEBUG) {
-        child.stderr.on('data', (data) => {
-            console.error('Claude Code stderr:', data.toString())
-        })
     }
 
     // Setup cleanup
@@ -378,22 +382,32 @@ export function query(config: {
     config.options?.abort?.addEventListener('abort', cleanup)
     process.on('exit', cleanup)
 
-    // Handle process exit
+    // Handle process exit (always settle so Query can clean up)
+    let resolveProcessExit: (() => void) | null = null
     const processExitPromise = new Promise<void>((resolve) => {
-        child.on('close', (code) => {
-            if (config.options?.abort?.aborted) {
-                query.setError(new AbortError('Claude Code process aborted by user'))
-            }
-            if (code !== 0) {
-                query.setError(new Error(`Claude Code process exited with code ${code}`))
-            } else {
-                resolve()
-            }
-        })
+        resolveProcessExit = resolve
     })
 
-    // Create query instance
     const query = new Query(childStdin, child.stdout, processExitPromise, canCallTool)
+
+    child.on('close', (code, signal) => {
+        if (config.options?.abort?.aborted) {
+            query.setError(new AbortError('Claude Code process aborted by user'))
+            resolveProcessExit?.()
+            return
+        }
+
+        if (code !== 0) {
+            const codeLabel = code === null ? 'null' : String(code)
+            const signalLabel = signal ? ` (signal ${signal})` : ''
+            const stderrSummary = stderrTail.trim()
+                ? `\n\nClaude stderr (tail):\n${stderrTail.trim()}`
+                : ''
+            query.setError(new Error(`Claude Code process exited with code ${codeLabel}${signalLabel}.${stderrSummary}`))
+        }
+
+        resolveProcessExit?.()
+    })
 
     // Handle process errors
     child.on('error', (error) => {
@@ -401,8 +415,12 @@ export function query(config: {
         if (config.options?.abort?.aborted) {
             query.setError(new AbortError('Claude Code process aborted by user'))
         } else {
-            query.setError(new Error(`Failed to spawn Claude Code process: ${error.message}`))
+            const stderrSummary = stderrTail.trim()
+                ? `\n\nClaude stderr (tail):\n${stderrTail.trim()}`
+                : ''
+            query.setError(new Error(`Failed to spawn Claude Code process: ${error.message}.${stderrSummary}`))
         }
+        resolveProcessExit?.()
     })
 
     // Cleanup on exit

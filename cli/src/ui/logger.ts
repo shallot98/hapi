@@ -12,6 +12,37 @@ import { existsSync, readdirSync, statSync } from 'node:fs'
 import { join, basename } from 'node:path'
 import { readRunnerState } from '@/persistence'
 
+function formatLogArg(arg: unknown): string {
+  if (arg === undefined) return 'undefined'
+  if (arg === null) return 'null'
+
+  if (typeof arg === 'string') return arg
+  if (typeof arg === 'number' || typeof arg === 'boolean' || typeof arg === 'bigint') {
+    return String(arg)
+  }
+
+  if (arg instanceof Error) {
+    const cause = (arg as any).cause
+    const formattedCause = cause instanceof Error
+      ? { name: cause.name, message: cause.message, stack: cause.stack }
+      : cause
+
+    return JSON.stringify({
+      name: arg.name,
+      message: arg.message,
+      stack: arg.stack,
+      cause: formattedCause
+    })
+  }
+
+  try {
+    const json = JSON.stringify(arg)
+    return json === undefined ? String(arg) : json
+  } catch {
+    return String(arg)
+  }
+}
+
 /**
  * Consistent date/time formatting functions
  */
@@ -187,9 +218,7 @@ class Logger {
         body: JSON.stringify({
           timestamp: new Date().toISOString(),
           level,
-          message: `${message} ${args.map(a => 
-            typeof a === 'object' ? JSON.stringify(a, null, 2) : String(a)
-          ).join(' ')}`,
+          message: `${message} ${args.map(formatLogArg).join(' ')}`,
           source: 'cli',
           platform: process.platform
         })
@@ -200,9 +229,7 @@ class Logger {
   }
 
   private logToFile(prefix: string, message: string, ...args: unknown[]): void {
-    const logLine = `${prefix} ${message} ${args.map(arg => 
-      typeof arg === 'string' ? arg : JSON.stringify(arg)
-    ).join(' ')}\n`
+    const logLine = `${prefix} ${message} ${args.map(formatLogArg).join(' ')}\n`
     
     // Send to remote server if configured
     if (this.dangerouslyUnencryptedServerLoggingUrl) {

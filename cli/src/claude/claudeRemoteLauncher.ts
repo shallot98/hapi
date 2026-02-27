@@ -363,7 +363,16 @@ class ClaudeRemoteLauncher extends RemoteLauncherBase {
                 } catch (e) {
                     logger.debug('[remote]: launch error', e);
                     if (!this.exitReason) {
-                        session.client.sendSessionEvent({ type: 'message', message: 'Process exited unexpectedly' });
+                        const isAbortError = e instanceof Error && e.name === 'AbortError';
+                        const errorMessage = e instanceof Error ? e.message : String(e);
+                        const message = isAbortError
+                            ? 'Aborted by user'
+                            : `Claude remote failed: ${errorMessage}`;
+                        messageBuffer.addMessage(message, 'status');
+                        session.client.sendSessionEvent({ type: 'message', message });
+                        if (!isAbortError) {
+                            await new Promise((resolve) => setTimeout(resolve, 750));
+                        }
                         continue;
                     }
                 } finally {
