@@ -31,6 +31,7 @@ export interface StartOptions {
 export async function runClaude(options: StartOptions = {}): Promise<void> {
     const workingDirectory = process.cwd();
     const startedBy = options.startedBy ?? 'terminal';
+    const isRootUser = typeof process.getuid === 'function' && process.getuid() === 0;
 
     // Log environment info at startup
     logger.debugLargeJson('[START] HAPI process started', getEnvironmentInfo());
@@ -53,6 +54,44 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         model: options.model
     });
     logger.debug(`Session created: ${sessionInfo.id}`);
+
+    let didWarnRootPermissionDowngrade = false;
+    const coercePermissionMode = (mode: PermissionMode): PermissionMode => {
+        if (!isRootUser) {
+            return mode;
+        }
+
+        if (mode !== 'bypassPermissions') {
+            return mode;
+        }
+
+        const applied: PermissionMode = 'acceptEdits';
+
+        if (!didWarnRootPermissionDowngrade) {
+            didWarnRootPermissionDowngrade = true;
+            session.sendSessionEvent({
+                type: 'message',
+                message: 'Claude Code does not allow bypassPermissions (--dangerously-skip-permissions) when running as root. Falling back to acceptEdits. Run hapi as a non-root user to use yolo.'
+            });
+            session.sendSessionEvent({ type: 'permission-mode-changed', mode: applied });
+        }
+
+        return applied;
+    };
+
+    const sanitizeClaudeArgs = (args?: string[]): string[] | undefined => {
+        if (!isRootUser || !args || args.length === 0) {
+            return args;
+        }
+
+        const filtered = args.filter((arg) => arg !== '--dangerously-skip-permissions');
+        if (filtered.length !== args.length) {
+            // Ensure we never try to use yolo while running as root.
+            coercePermissionMode('bypassPermissions');
+        }
+
+        return filtered.length > 0 ? filtered : undefined;
+    };
 
     // Extract SDK metadata in background and update session when ready
     extractSDKMetadataAsync(async (sdkMetadata) => {
@@ -143,7 +182,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     }));
 
     // Forward messages to the queue
-    let currentPermissionMode: PermissionMode = options.permissionMode ?? 'default';
+    let currentPermissionMode: PermissionMode = coercePermissionMode(options.permissionMode ?? 'default');
     let currentModelMode: SessionModelMode = options.model === 'sonnet' || options.model === 'opus' ? options.model : 'default';
     let currentFallbackModel: string | undefined = undefined; // Track current fallback model
     let currentCustomSystemPrompt: string | undefined = undefined; // Track current custom system prompt
@@ -163,7 +202,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
     session.onUserMessage((message) => {
         const sessionPermissionMode = currentSessionRef.current?.getPermissionMode();
         if (sessionPermissionMode && isPermissionModeAllowedForFlavor(sessionPermissionMode, 'claude')) {
-            currentPermissionMode = sessionPermissionMode as PermissionMode;
+            currentPermissionMode = coercePermissionMode(sessionPermissionMode as PermissionMode);
         }
         const messagePermissionMode = currentPermissionMode;
         const messageModel = currentModelMode === 'default' ? undefined : currentModelMode;
@@ -280,7 +319,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         if (!parsed.success || !isPermissionModeAllowedForFlavor(parsed.data, 'claude')) {
             throw new Error('Invalid permission mode');
         }
-        return parsed.data as PermissionMode;
+        return coercePermissionMode(parsed.data as PermissionMode);
     };
 
     const resolveModelMode = (value: unknown): SessionModelMode => {
@@ -316,7 +355,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
         await loop({
             path: workingDirectory,
             model: options.model,
-            permissionMode: options.permissionMode,
+            permissionMode: currentPermissionMode,
             startingMode,
             messageQueue,
             api,
@@ -334,7 +373,7 @@ export async function runClaude(options: StartOptions = {}): Promise<void> {
             },
             session,
             claudeEnvVars: options.claudeEnvVars,
-            claudeArgs: options.claudeArgs,
+            claudeArgs: sanitizeClaudeArgs(options.claudeArgs),
             startedBy,
             hookSettingsPath
         });
